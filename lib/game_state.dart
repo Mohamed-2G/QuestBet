@@ -1,0 +1,887 @@
+import 'package:flutter/material.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'dart:math';
+import 'task_model.dart';
+
+class GameState extends ChangeNotifier {
+  final FirebaseFirestore _db = FirebaseFirestore.instance;
+  final FirebaseAuth _auth = FirebaseAuth.instance;
+
+  int _gold = 0;
+  String? _username;
+  String? _email;
+  String? _photoUrl;
+  String? _groupCode;
+  String? _groupName;
+  List<Task> _tasks = [];
+  bool isLoading = false;
+  List<Map<String, dynamic>> _groupMembers = [];
+
+  int get gold => _gold;
+  String? get username => _username;
+  String? get email => _email;
+  String? get photoUrl => _photoUrl;
+  String? get groupCode => _groupCode;
+  String? get groupName => _groupName;
+  List<Task> get tasks => _tasks;
+  List<Map<String, dynamic>> get groupMembers => _groupMembers;
+
+  // Leaderboard data
+  List<Map<String, dynamic>> _globalCoinsLeaderboard = [];
+  List<Map<String, dynamic>> _globalTasksLeaderboard = [];
+  List<Map<String, dynamic>> _groupCoinsLeaderboard = [];
+  List<Map<String, dynamic>> _groupTasksLeaderboard = [];
+
+  List<Map<String, dynamic>> get globalCoinsLeaderboard => _globalCoinsLeaderboard;
+  List<Map<String, dynamic>> get globalTasksLeaderboard => _globalTasksLeaderboard;
+  List<Map<String, dynamic>> get groupCoinsLeaderboard => _groupCoinsLeaderboard;
+  List<Map<String, dynamic>> get groupTasksLeaderboard => _groupTasksLeaderboard;
+
+  // Constructor - Check for existing auth state
+  GameState() {
+    _checkAuthState();
+  }
+
+  // Check if user is already logged in (on app startup)
+  Future<void> _checkAuthState() async {
+    try {
+      isLoading = true;
+      notifyListeners();
+
+      User? currentUser = _auth.currentUser;
+      
+      if (currentUser != null) {
+        // User is already logged in, load their data
+        print("--- FOUND EXISTING USER ---");
+        String uid = currentUser.uid;
+        
+        DocumentSnapshot doc = await _db.collection('players').doc(uid).get();
+        
+        if (doc.exists && doc.data() != null) {
+          Map<String, dynamic> data = doc.data() as Map<String, dynamic>;
+          _username = data['username'];
+          _email = data['email'];
+          _photoUrl = data['photoUrl'];
+          _gold = data['gold'] ?? 0;
+          _groupCode = data['groupCode'];
+          await _loadTasks();
+          if (_groupCode != null && _groupCode!.isNotEmpty) {
+            await _loadGroupMembers();
+          }
+          print("--- AUTO-LOGIN SUCCESS ---");
+        }
+      }
+    } catch (e) {
+      print("❌ AUTH STATE CHECK ERROR: $e");
+    } finally {
+      isLoading = false;
+      notifyListeners();
+    }
+  }
+
+  // 1. REGISTER (New Account)
+  Future<String?> register({
+    required String username,
+    required String email,
+    required String password,
+  }) async {
+    try {
+      isLoading = true;
+      notifyListeners();
+      
+      print("--- STARTING REGISTRATION ---");
+      
+      String cleanUsername = username.trim().toLowerCase();
+
+      // A. Check if username is already taken in Firestore
+      final usernameCheck = await _db
+          .collection('players')
+          .where('username', isEqualTo: cleanUsername)
+          .get();
+
+      if (usernameCheck.docs.isNotEmpty) {
+        return "Username '$cleanUsername' is already taken!";
+      }
+
+      // B. Create Secure Account in Firebase Auth
+      print("Creating Auth User...");
+      UserCredential userCred = await _auth.createUserWithEmailAndPassword(
+        email: email.trim(),
+        password: password,
+      );
+
+      // C. Create Player Profile in Firestore
+      print("Saving Profile to Firestore...");
+      String uid = userCred.user!.uid;
+      
+      await _db.collection('players').doc(uid).set({
+        'username': cleanUsername,
+        'email': email.trim(),
+        'gold': 350, 
+        'createdAt': FieldValue.serverTimestamp(),
+      });
+
+      // D. Initialize Local State
+      _username = cleanUsername;
+      _email = email.trim();
+      _gold = 350;
+      _groupCode = null;
+      await _loadTasks();
+      
+      print("--- REGISTRATION SUCCESS ---");
+      return null; // Success!
+      
+    } on FirebaseAuthException catch (e) {
+      print("❌ FIREBASE AUTH ERROR: ${e.code}");
+      
+      // Return user-friendly error messages
+      if (e.code == 'weak-password') {
+        return 'Password is too weak (min 6 characters)';
+      } else if (e.code == 'email-already-in-use') {
+        return 'This email is already registered';
+      } else if (e.code == 'invalid-email') {
+        return 'Invalid email address';
+      } else if (e.code == 'operation-not-allowed') {
+        return 'Email/password accounts are not enabled';
+      }
+      return e.message ?? 'Registration failed';
+      
+    } catch (e) {
+      print("❌ REGISTRATION ERROR: $e");
+      return "Registration failed: ${e.toString()}";
+    } finally {
+      isLoading = false;
+      notifyListeners();
+    }
+  }
+
+  // 2. LOGIN (Username OR Email) - FIXED VERSION
+  Future<String?> login({
+    required String loginInput, 
+    required String password,
+  }) async {
+    try {
+      isLoading = true;
+      notifyListeners();
+
+      print("--- STARTING LOGIN ---");
+      print("Input: $loginInput");
+
+      String emailToUse = loginInput.trim();
+
+      // A. DETECT: Is this a Username? (No '@' symbol)
+      if (!loginInput.contains('@')) {
+        print("Detected Username. Looking up email...");
+        
+        String cleanUsername = loginInput.trim().toLowerCase();
+
+        final query = await _db
+            .collection('players')
+            .where('username', isEqualTo: cleanUsername)
+            .limit(1)
+            .get();
+
+        if (query.docs.isEmpty) {
+          return "Username '$cleanUsername' not found!";
+        }
+        
+        Map<String, dynamic> userData = query.docs.first.data();
+        String? foundEmail = userData['email'] as String?;
+        
+        if (foundEmail == null || foundEmail.isEmpty) {
+          return "User profile is missing email. Please contact support.";
+        }
+        
+        emailToUse = foundEmail;
+        print("Found Email: $emailToUse");
+      }
+
+      // B. Login using Email & Password
+      print("Signing in with Firebase Auth...");
+      
+      // FIX: Wrap in try-catch to handle the pigeon error
+      UserCredential? userCred;
+      try {
+        userCred = await _auth.signInWithEmailAndPassword(
+          email: emailToUse,
+          password: password,
+        );
+      } catch (authError) {
+        print("Auth error details: $authError");
+        // Re-throw to be caught by outer catch block
+        rethrow;
+      }
+
+      if (userCred.user == null) {
+        return "Login failed - no user returned";
+      }
+
+      // C. Load Player Data from Firestore
+      print("Loading Profile...");
+      String uid = userCred.user!.uid;
+      String authEmail = userCred.user!.email ?? emailToUse;
+      
+      DocumentSnapshot doc = await _db.collection('players').doc(uid).get();
+
+      // If document doesn't exist, create it (fallback for users created manually in Firebase Console)
+      if (!doc.exists) {
+        print("⚠️ Player profile not found in Firestore. Creating one...");
+        
+        // Generate username from email (part before @)
+        String generatedUsername = authEmail.split('@')[0].toLowerCase();
+        
+        // Check if this username is already taken
+        final usernameCheck = await _db
+            .collection('players')
+            .where('username', isEqualTo: generatedUsername)
+            .get();
+        
+        // If taken, append a number
+        if (usernameCheck.docs.isNotEmpty) {
+          int counter = 1;
+          String baseUsername = generatedUsername;
+          while (true) {
+            generatedUsername = '$baseUsername$counter';
+            final check = await _db
+                .collection('players')
+                .where('username', isEqualTo: generatedUsername)
+                .get();
+            if (check.docs.isEmpty) break;
+            counter++;
+          }
+        }
+        
+        // Create the player document
+        await _db.collection('players').doc(uid).set({
+          'username': generatedUsername,
+          'email': authEmail,
+          'gold': 350, // Starting gold
+          'createdAt': FieldValue.serverTimestamp(),
+        });
+        
+        print("✅ Created player profile with username: $generatedUsername");
+        
+        _username = generatedUsername;
+        _email = authEmail;
+        _gold = 350;
+        _groupCode = null;
+      } else {
+        // Document exists, load the data
+        Map<String, dynamic>? data = doc.data() as Map<String, dynamic>?;
+        
+        if (data == null) {
+          return "Player profile data is corrupted. Please contact support.";
+        }
+        
+        String? username = data['username'] as String?;
+        String? email = data['email'] as String?;
+        
+        if (username == null || username.isEmpty) {
+          // If username is missing, generate one from email
+          String generatedUsername = (email ?? authEmail).split('@')[0].toLowerCase();
+          await _db.collection('players').doc(uid).update({'username': generatedUsername});
+          username = generatedUsername;
+        }
+        
+        if (email == null || email.isEmpty) {
+          // If email is missing, use the auth email
+          await _db.collection('players').doc(uid).update({'email': authEmail});
+          email = authEmail;
+        }
+        
+        _username = username;
+        _email = email;
+        _photoUrl = data['photoUrl'];
+        _gold = (data['gold'] as int?) ?? 0;
+        _groupCode = data['groupCode'];
+        
+        if (_groupCode != null && _groupCode!.isNotEmpty) {
+          await _loadGroupMembers();
+        }
+      }
+      
+      try {
+        await _loadTasks();
+      } catch (e) {
+        print("⚠️ Warning: Could not load tasks: $e");
+        // Continue anyway - tasks can be empty
+      }
+      
+      print("--- LOGIN SUCCESS ---");
+      print("Username: $_username, Email: $_email, Gold: $_gold");
+      return null; // Success!
+
+    } on FirebaseAuthException catch (e) {
+      print("❌ FIREBASE AUTH ERROR: ${e.code}");
+      
+      // Return user-friendly error messages
+      if (e.code == 'user-not-found') {
+        return 'No account found with this email';
+      } else if (e.code == 'wrong-password') {
+        return 'Incorrect password';
+      } else if (e.code == 'invalid-credential') {
+        return 'Invalid email or password';
+      } else if (e.code == 'invalid-email') {
+        return 'Invalid email format';
+      } else if (e.code == 'user-disabled') {
+        return 'This account has been disabled';
+      } else if (e.code == 'too-many-requests') {
+        return 'Too many failed attempts. Try again later';
+      }
+      return e.message ?? 'Login failed';
+      
+    } catch (e) {
+      print("❌ LOGIN ERROR: $e");
+      print("Error type: ${e.runtimeType}");
+      if (e is FirebaseAuthException) {
+        // This shouldn't happen as we catch it above, but just in case
+        return e.message ?? 'Login failed';
+      }
+      return "Login failed: ${e.toString()}";
+    } finally {
+      isLoading = false;
+      notifyListeners();
+    }
+  }
+
+  // 3. LOGOUT
+  Future<void> logout() async {
+    await _auth.signOut(); 
+    _username = null;
+    _email = null;
+    _photoUrl = null;
+    _gold = 0;
+    _tasks = [];
+    _groupCode = null;
+    _groupName = null;
+    _groupMembers = [];
+    notifyListeners();
+  }
+
+  // 10. UPDATE USERNAME
+  Future<String?> updateUsername(String newUsername) async {
+    User? user = _auth.currentUser;
+    if (user == null) return "Not logged in";
+
+    try {
+      String cleanUsername = newUsername.trim().toLowerCase();
+      
+      if (cleanUsername.isEmpty) {
+        return "Username cannot be empty";
+      }
+
+      // Check if username is already taken (by another user)
+      final usernameCheck = await _db
+          .collection('players')
+          .where('username', isEqualTo: cleanUsername)
+          .get();
+
+      // If username is taken by someone else, return error
+      if (usernameCheck.docs.isNotEmpty && usernameCheck.docs.first.id != user.uid) {
+        return "Username '$cleanUsername' is already taken!";
+      }
+
+      // Update in Firestore
+      await _db.collection('players').doc(user.uid).update({
+        'username': cleanUsername,
+      });
+
+      _username = cleanUsername;
+      notifyListeners();
+      return null; // Success
+    } catch (e) {
+      return "Failed to update username: ${e.toString()}";
+    }
+  }
+
+  // 11. UPDATE EMAIL
+  Future<String?> updateEmail(String newEmail) async {
+    User? user = _auth.currentUser;
+    if (user == null) return "Not logged in";
+
+    try {
+      String cleanEmail = newEmail.trim().toLowerCase();
+      
+      if (cleanEmail.isEmpty || !cleanEmail.contains('@')) {
+        return "Invalid email address";
+      }
+
+      // Update Firebase Auth email
+      await user.updateEmail(cleanEmail);
+      
+      // Update in Firestore
+      await _db.collection('players').doc(user.uid).update({
+        'email': cleanEmail,
+      });
+
+      _email = cleanEmail;
+      notifyListeners();
+      return null; // Success
+    } on FirebaseAuthException catch (e) {
+      if (e.code == 'requires-recent-login') {
+        return "Please logout and login again to change your email";
+      }
+      return "Failed to update email: ${e.message}";
+    } catch (e) {
+      return "Failed to update email: ${e.toString()}";
+    }
+  }
+
+  // 12. UPDATE PHOTO URL
+  Future<String?> updatePhotoUrl(String? photoUrl) async {
+    User? user = _auth.currentUser;
+    if (user == null) return "Not logged in";
+
+    try {
+      String? cleanUrl = photoUrl?.trim();
+      if (cleanUrl != null && cleanUrl.isEmpty) {
+        cleanUrl = null;
+      }
+
+      // Update in Firestore
+      Map<String, dynamic> updateData = {};
+      if (cleanUrl == null) {
+        updateData['photoUrl'] = FieldValue.delete();
+      } else {
+        updateData['photoUrl'] = cleanUrl;
+      }
+      
+      await _db.collection('players').doc(user.uid).update(updateData);
+
+      _photoUrl = cleanUrl;
+      notifyListeners();
+      return null; // Success
+    } catch (e) {
+      return "Failed to update photo: ${e.toString()}";
+    }
+  }
+
+  // 4. LOAD TASKS (with Lazy Check for missed deadlines)
+  Future<void> _loadTasks() async {
+    User? user = _auth.currentUser;
+    if (user == null) return;
+
+    final snapshot = await _db
+        .collection('players')
+        .doc(user.uid)
+        .collection('tasks')
+        .get();
+
+    _tasks = snapshot.docs.map((doc) {
+      Map<String, dynamic> data = doc.data();
+      return Task(
+        id: doc.id,
+        title: data['title'],
+        deadline: DateTime.parse(data['deadline']),
+        isCompleted: data['isCompleted'],
+        depositAmount: data['depositAmount'],
+        proofLink: data['proofLink'],
+        proofImageUrl: data['proofImageUrl'],
+      );
+    }).toList();
+
+    // LAZY CHECK: Handle missed deadlines
+    await _checkMissedDeadlines();
+  }
+
+  // Lazy Check - Punish users for missed deadlines
+  Future<void> _checkMissedDeadlines() async {
+    User? user = _auth.currentUser;
+    if (user == null) return;
+
+    DateTime now = DateTime.now();
+    List<Task> failedTasks = [];
+
+    for (Task task in _tasks) {
+      if (task.deadline.isBefore(now) && !task.isCompleted) {
+        // Mark as failed and burn the gold
+        failedTasks.add(task);
+        
+        if (task.id != null) {
+          await _db
+              .collection('players')
+              .doc(user.uid)
+              .collection('tasks')
+              .doc(task.id)
+              .update({
+            'isCompleted': false,
+            'failed': true,
+          });
+        }
+
+        // Burn the deposit (gold already deducted when task was created)
+        // The gold is already gone, but we mark it as failed
+      }
+    }
+
+    if (failedTasks.isNotEmpty) {
+      notifyListeners();
+      // Return failed tasks so UI can show popup
+      return;
+    }
+  }
+
+  // Get failed tasks for UI display
+  List<Task> getFailedTasks() {
+    return _tasks.where((task) => 
+      task.deadline.isBefore(DateTime.now()) && !task.isCompleted
+    ).toList();
+  }
+
+  // 7a. CREATE GROUP
+  Future<String?> createGroup(String groupName) async {
+    User? user = _auth.currentUser;
+    if (user == null) return "Not logged in";
+
+    if (groupName.trim().isEmpty) {
+      return "Group name cannot be empty";
+    }
+
+    try {
+      // Generate a random 6-character group code
+      const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+      String groupCode = '';
+      bool codeExists = true;
+      int attempts = 0;
+      
+      // Keep generating until we find a unique code (max 10 attempts)
+      final random = Random();
+      while (codeExists && attempts < 10) {
+        groupCode = '';
+        for (int i = 0; i < 6; i++) {
+          groupCode += chars[random.nextInt(chars.length)];
+        }
+        
+        // Check if code already exists in groups collection
+        final check = await _db
+            .collection('groups')
+            .doc(groupCode)
+            .get();
+        
+        codeExists = check.exists;
+        attempts++;
+      }
+      
+      if (codeExists || groupCode.isEmpty) {
+        return "Failed to generate unique group code. Please try again.";
+      }
+      
+      // Create group document
+      await _db.collection('groups').doc(groupCode).set({
+        'name': groupName.trim(),
+        'code': groupCode,
+        'createdBy': user.uid,
+        'createdAt': FieldValue.serverTimestamp(),
+      });
+      
+      // Update user's group code
+      await _db.collection('players').doc(user.uid).update({
+        'groupCode': groupCode,
+      });
+
+      _groupCode = groupCode;
+      _groupName = groupName.trim();
+      await _loadGroupMembers();
+      notifyListeners();
+      return null; // Success
+    } catch (e) {
+      return "Failed to create group: ${e.toString()}";
+    }
+  }
+
+  // 7b. JOIN GROUP
+  Future<String?> joinGroup(String code) async {
+    User? user = _auth.currentUser;
+    if (user == null) return "Not logged in";
+
+    try {
+      String cleanCode = code.trim().toUpperCase();
+      
+      // Check if group exists
+      final groupDoc = await _db.collection('groups').doc(cleanCode).get();
+      if (!groupDoc.exists) {
+        return "Group code not found. Please check the code and try again.";
+      }
+      
+      // Update user's group code
+      await _db.collection('players').doc(user.uid).update({
+        'groupCode': cleanCode,
+      });
+
+      _groupCode = cleanCode;
+      await _loadGroupMembers();
+      notifyListeners();
+      return null; // Success
+    } catch (e) {
+      return "Failed to join group: ${e.toString()}";
+    }
+  }
+
+  // 8. LOAD GROUP MEMBERS
+  Future<void> _loadGroupMembers() async {
+    if (_groupCode == null || _groupCode!.isEmpty) {
+      _groupMembers = [];
+      _groupName = null;
+      return;
+    }
+
+    try {
+      // Load group info
+      final groupDoc = await _db.collection('groups').doc(_groupCode).get();
+      if (groupDoc.exists) {
+        _groupName = groupDoc.data()?['name'];
+      } else {
+        _groupName = null;
+      }
+
+      // Load group members
+      final snapshot = await _db
+          .collection('players')
+          .where('groupCode', isEqualTo: _groupCode)
+          .get();
+
+      _groupMembers = snapshot.docs.map((doc) {
+        Map<String, dynamic> data = doc.data();
+        return {
+          'uid': doc.id,
+          'username': data['username'] ?? 'Unknown',
+          'gold': data['gold'] ?? 0,
+          'email': data['email'] ?? '',
+        };
+      }).toList();
+
+      // Sort by gold (descending)
+      _groupMembers.sort((a, b) => (b['gold'] as int).compareTo(a['gold'] as int));
+      notifyListeners();
+    } catch (e) {
+      print("Error loading group members: $e");
+    }
+  }
+
+  // 9. LEAVE GROUP
+  Future<void> leaveGroup() async {
+    User? user = _auth.currentUser;
+    if (user == null) return;
+
+    await _db.collection('players').doc(user.uid).update({
+      'groupCode': FieldValue.delete(),
+    });
+
+    _groupCode = null;
+    _groupName = null;
+    _groupMembers = [];
+    _groupCoinsLeaderboard = [];
+    _groupTasksLeaderboard = [];
+    notifyListeners();
+  }
+
+  // 10. LOAD GLOBAL LEADERBOARD (Coins)
+  Future<void> loadGlobalCoinsLeaderboard() async {
+    try {
+      final snapshot = await _db
+          .collection('players')
+          .orderBy('gold', descending: true)
+          .limit(100)
+          .get();
+
+      _globalCoinsLeaderboard = snapshot.docs.map((doc) {
+        Map<String, dynamic> data = doc.data();
+        return {
+          'uid': doc.id,
+          'username': data['username'] ?? 'Unknown',
+          'gold': data['gold'] ?? 0,
+        };
+      }).toList();
+      notifyListeners();
+    } catch (e) {
+      print("Error loading global coins leaderboard: $e");
+    }
+  }
+
+  // 11. LOAD GLOBAL LEADERBOARD (Completed Tasks)
+  Future<void> loadGlobalTasksLeaderboard() async {
+    try {
+      final snapshot = await _db.collection('players').get();
+      List<Map<String, dynamic>> playersWithTasks = [];
+
+      for (var doc in snapshot.docs) {
+        Map<String, dynamic> data = doc.data();
+        
+        // Count completed tasks
+        final tasksSnapshot = await _db
+            .collection('players')
+            .doc(doc.id)
+            .collection('tasks')
+            .where('isCompleted', isEqualTo: true)
+            .get();
+        
+        playersWithTasks.add({
+          'uid': doc.id,
+          'username': data['username'] ?? 'Unknown',
+          'completedTasks': tasksSnapshot.docs.length,
+        });
+      }
+
+      // Sort by completed tasks (descending)
+      playersWithTasks.sort((a, b) => 
+        (b['completedTasks'] as int).compareTo(a['completedTasks'] as int));
+      
+      _globalTasksLeaderboard = playersWithTasks.take(100).toList();
+      notifyListeners();
+    } catch (e) {
+      print("Error loading global tasks leaderboard: $e");
+    }
+  }
+
+  // 12. LOAD GROUP LEADERBOARD (Coins)
+  Future<void> loadGroupCoinsLeaderboard() async {
+    if (_groupCode == null || _groupCode!.isEmpty) {
+      _groupCoinsLeaderboard = [];
+      return;
+    }
+
+    try {
+      final snapshot = await _db
+          .collection('players')
+          .where('groupCode', isEqualTo: _groupCode)
+          .get();
+
+      _groupCoinsLeaderboard = snapshot.docs.map((doc) {
+        Map<String, dynamic> data = doc.data();
+        return {
+          'uid': doc.id,
+          'username': data['username'] ?? 'Unknown',
+          'gold': data['gold'] ?? 0,
+        };
+      }).toList();
+
+      // Sort by gold (descending)
+      _groupCoinsLeaderboard.sort((a, b) => 
+        (b['gold'] as int).compareTo(a['gold'] as int));
+      notifyListeners();
+    } catch (e) {
+      print("Error loading group coins leaderboard: $e");
+    }
+  }
+
+  // 13. LOAD GROUP LEADERBOARD (Completed Tasks)
+  Future<void> loadGroupTasksLeaderboard() async {
+    if (_groupCode == null || _groupCode!.isEmpty) {
+      _groupTasksLeaderboard = [];
+      return;
+    }
+
+    try {
+      final snapshot = await _db
+          .collection('players')
+          .where('groupCode', isEqualTo: _groupCode)
+          .get();
+
+      List<Map<String, dynamic>> membersWithTasks = [];
+
+      for (var doc in snapshot.docs) {
+        Map<String, dynamic> data = doc.data();
+        
+        // Count completed tasks
+        final tasksSnapshot = await _db
+            .collection('players')
+            .doc(doc.id)
+            .collection('tasks')
+            .where('isCompleted', isEqualTo: true)
+            .get();
+        
+        membersWithTasks.add({
+          'uid': doc.id,
+          'username': data['username'] ?? 'Unknown',
+          'completedTasks': tasksSnapshot.docs.length,
+        });
+      }
+
+      // Sort by completed tasks (descending)
+      membersWithTasks.sort((a, b) => 
+        (b['completedTasks'] as int).compareTo(a['completedTasks'] as int));
+      
+      _groupTasksLeaderboard = membersWithTasks;
+      notifyListeners();
+    } catch (e) {
+      print("Error loading group tasks leaderboard: $e");
+    }
+  }
+
+  // 5. ADD TASK
+  Future<void> addTask(String title, DateTime deadline, {int depositAmount = 50}) async {
+    User? user = _auth.currentUser;
+    if (user == null) return;
+
+    if (_gold >= depositAmount) {
+      _gold -= depositAmount;
+      await _db.collection('players').doc(user.uid).update({'gold': _gold});
+
+      await _db.collection('players').doc(user.uid).collection('tasks').add({
+        'title': title,
+        'deadline': deadline.toIso8601String(),
+        'isCompleted': false,
+        'depositAmount': depositAmount,
+      });
+
+      await _loadTasks();
+      notifyListeners();
+    }
+  }
+
+  // 6. COMPLETE TASK
+  Future<void> completeTask(Task task, {String? proofLink, String? proofImageUrl}) async {
+    User? user = _auth.currentUser;
+    if (user == null) return;
+
+    if (!task.isCompleted) {
+      Map<String, dynamic> updateData = {'isCompleted': true};
+      
+      if (proofLink != null && proofLink.isNotEmpty) {
+        updateData['proofLink'] = proofLink;
+      }
+      
+      if (proofImageUrl != null && proofImageUrl.isNotEmpty) {
+        updateData['proofImageUrl'] = proofImageUrl;
+      }
+      
+      if (task.id != null) {
+        await _db
+            .collection('players')
+            .doc(user.uid)
+            .collection('tasks')
+            .doc(task.id)
+            .update(updateData);
+      }
+
+      _gold += 80;
+      await _db.collection('players').doc(user.uid).update({'gold': _gold});
+      await _loadTasks();
+      notifyListeners();
+    }
+  }
+
+  // 6b. UNCOMPLETE TASK (undo completion)
+  Future<void> uncompleteTask(Task task) async {
+    User? user = _auth.currentUser;
+    if (user == null) return;
+
+    if (task.isCompleted && task.id != null) {
+      await _db
+          .collection('players')
+          .doc(user.uid)
+          .collection('tasks')
+          .doc(task.id)
+          .update({
+        'isCompleted': false,
+      });
+
+      // Deduct the gold that was earned
+      _gold = (_gold - 80).clamp(0, double.infinity).toInt();
+      await _db.collection('players').doc(user.uid).update({'gold': _gold});
+      await _loadTasks();
+      notifyListeners();
+    }
+  }
+}

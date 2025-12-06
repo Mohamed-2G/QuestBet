@@ -1,0 +1,46 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // Helper function to check if user is authenticated
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+    
+    // Helper function to check if user owns the document
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+    
+    // Players collection
+    match /players/{playerId} {
+      // Users can read any player document
+      allow read: if isAuthenticated();
+      
+      // Users can only create/update their own player document
+      allow create: if isAuthenticated() && request.auth.uid == playerId;
+      allow update: if isAuthenticated() && request.auth.uid == playerId;
+      allow delete: if isAuthenticated() && request.auth.uid == playerId;
+      
+      // Tasks subcollection
+      match /tasks/{taskId} {
+        // Users can only read/write their own tasks
+        allow read, write: if isAuthenticated() && request.auth.uid == playerId;
+      }
+    }
+    
+    // Groups collection
+    match /groups/{groupId} {
+      // Authenticated users can read any group
+      allow read: if isAuthenticated();
+      
+      // Authenticated users can create groups
+      allow create: if isAuthenticated();
+      
+      // Only the creator can update/delete a group
+      allow update, delete: if isAuthenticated() && 
+        resource.data.createdBy == request.auth.uid;
+    }
+  }
+}
+
