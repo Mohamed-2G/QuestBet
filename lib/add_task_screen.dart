@@ -15,7 +15,6 @@ class AddTaskScreen extends StatefulWidget {
 
 class _AddTaskScreenState extends State<AddTaskScreen> {
   final TextEditingController _titleController = TextEditingController();
-  final TextEditingController _depositController = TextEditingController();
   DateTime _selectedDate = DateTime.now().add(const Duration(days: 1));
   TimeOfDay _selectedTime = TimeOfDay.now();
   String? _selectedCategory;
@@ -45,26 +44,32 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
   @override
   void dispose() {
     _titleController.dispose();
-    _depositController.dispose();
     super.dispose();
   }
 
-  void _createTask() {
+  void _createTask() async {
     final gameState = context.read<GameState>();
     
     if (_titleController.text.trim().isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text("Please enter a task title"),
+          content: Text("Please enter a quest title"),
           backgroundColor: AppTheme.danger,
         ),
       );
       return;
     }
 
-    int deposit = 0;
-    if (_depositController.text.trim().isNotEmpty) {
-      deposit = int.tryParse(_depositController.text.trim()) ?? 0;
+    // Check if user has enough gold
+    if (gameState.gold < 50) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text("Insufficient gold! You need 50 gold to create a quest. You currently have ${gameState.gold} gold."),
+          backgroundColor: AppTheme.danger,
+          duration: const Duration(seconds: 4),
+        ),
+      );
+      return;
     }
 
     final deadline = DateTime(
@@ -75,19 +80,30 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
       _selectedTime.minute,
     );
 
-    gameState.addTask(
+    final error = await gameState.addTask(
       _titleController.text.trim(),
       deadline,
-      depositAmount: deposit,
     );
 
-    Navigator.pop(context);
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text("✅ Task created!"),
-        backgroundColor: AppTheme.success,
-      ),
-    );
+    if (mounted) {
+      if (error != null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(error),
+            backgroundColor: AppTheme.danger,
+            duration: const Duration(seconds: 4),
+          ),
+        );
+      } else {
+        Navigator.pop(context);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text("✅ Quest created! 50 gold deducted."),
+            backgroundColor: AppTheme.success,
+          ),
+        );
+      }
+    }
   }
 
   @override
@@ -253,49 +269,51 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
               }).toList(),
             ),
             const SizedBox(height: 24),
-
-            // Gold Deposit Field
-            TextField(
-              controller: _depositController,
-              style: GoogleFonts.poppins(
-                color: AppTheme.textPrimary,
-                fontWeight: FontWeight.w600,
-              ),
-              keyboardType: TextInputType.number,
-              decoration: InputDecoration(
-                labelText: "Gold Deposit (optional)",
-                labelStyle: GoogleFonts.poppins(
-                  color: AppTheme.textSecondary,
-                  fontWeight: FontWeight.w600,
-                ),
-                filled: true,
-                fillColor: AppTheme.surface,
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(16),
-                  borderSide: BorderSide(
-                    color: AppTheme.primaryYellow.withOpacity(0.3),
-                    width: 2,
+            
+            // Task Creation Fee Info
+            AppTheme.questContainer(
+              padding: const EdgeInsets.all(16),
+              withYellowBorder: true,
+              child: Row(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      gradient: AppTheme.yellowGradient,
+                      shape: BoxShape.circle,
+                    ),
+                    child: const Icon(
+                      Icons.info_outline,
+                      color: AppTheme.textPrimary,
+                      size: 20,
+                    ),
                   ),
-                ),
-                focusedBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(16),
-                  borderSide: const BorderSide(
-                    color: AppTheme.primaryYellow,
-                    width: 2.5,
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          "Quest Creation Fee",
+                          style: GoogleFonts.poppins(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w700,
+                            color: AppTheme.textPrimary,
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          "Creating a quest costs 50 gold. Completing it rewards 80 gold.",
+                          style: GoogleFonts.poppins(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w500,
+                            color: AppTheme.textSecondary,
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
-                ),
-                prefixIcon: Container(
-                  margin: const EdgeInsets.all(8),
-                  decoration: BoxDecoration(
-                    gradient: AppTheme.yellowGradient,
-                    shape: BoxShape.circle,
-                  ),
-                  child: const Icon(
-                    Icons.monetization_on,
-                    color: AppTheme.textPrimary,
-                    size: 20,
-                  ),
-                ),
+                ],
               ),
             ),
             const SizedBox(height: 24),

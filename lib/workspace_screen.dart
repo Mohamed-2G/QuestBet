@@ -98,7 +98,7 @@ class _WorkspaceScreenState extends State<WorkspaceScreen> {
                 ),
               ),
               const SizedBox(height: 12),
-              ...failedTasks.map((task) => Padding(
+              ...failedTasks.map((Task task) => Padding(
                 padding: const EdgeInsets.only(bottom: 8),
                 child: Row(
                   children: [
@@ -231,7 +231,7 @@ class _WorkspaceScreenState extends State<WorkspaceScreen> {
                       ),
                       const SizedBox(height: 8),
                       Text(
-                        '${gameState.tasks.where((t) => !t.isCompleted).length} active quests',
+                        '${gameState.tasks.where((Task t) => !t.isCompleted).length} active quests',
                         style: GoogleFonts.poppins(
                           fontSize: 14,
                           color: AppTheme.textSecondary,

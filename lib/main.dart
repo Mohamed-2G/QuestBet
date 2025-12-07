@@ -74,6 +74,11 @@ class MainNavigation extends StatefulWidget {
 class _MainNavigationState extends State<MainNavigation> {
   int _currentIndex = 0;
 
+  // Screen order must match bottom navigation bar item order:
+  // Index 0: Workspace
+  // Index 1: Leaderboard
+  // Index 2: Groups
+  // Index 3: Profile
   final List<Widget> _screens = [
     const WorkspaceScreen(),
     const LeaderboardScreen(),
@@ -108,6 +113,8 @@ class _MainNavigationState extends State<MainNavigation> {
               });
             },
             type: BottomNavigationBarType.fixed,
+            selectedFontSize: 11,
+            unselectedFontSize: 11,
             backgroundColor: Colors.transparent,
             selectedItemColor: AppTheme.primaryYellow,
             unselectedItemColor: AppTheme.textTertiary,

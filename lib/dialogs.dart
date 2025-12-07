@@ -13,7 +13,6 @@ import 'task_templates.dart';
 class TaskDialogs {
   static void showAddTaskDialog(BuildContext context, GameState gameState) {
     final TextEditingController titleController = TextEditingController();
-    final TextEditingController depositController = TextEditingController();
     DateTime selectedDate = DateTime.now().add(const Duration(days: 1));
     TimeOfDay selectedTime = TimeOfDay.now();
 
@@ -22,7 +21,6 @@ class TaskDialogs {
       builder: (dialogContext) {
         return _AddTaskDialogContent(
           titleController: titleController,
-          depositController: depositController,
           initialDate: selectedDate,
           initialTime: selectedTime,
           gameState: gameState,
@@ -433,14 +431,12 @@ class TaskDialogs {
 
 class _AddTaskDialogContent extends StatefulWidget {
   final TextEditingController titleController;
-  final TextEditingController depositController;
   final DateTime initialDate;
   final TimeOfDay initialTime;
   final GameState gameState;
 
   const _AddTaskDialogContent({
     required this.titleController,
-    required this.depositController,
     required this.initialDate,
     required this.initialTime,
     required this.gameState,
@@ -651,31 +647,49 @@ class _AddTaskDialogContentState extends State<_AddTaskDialogContent> {
                       autofocus: false,
                     ),
                     const SizedBox(height: 16),
-                    TextField(
-                      controller: widget.depositController,
-                      style: GoogleFonts.poppins(color: AppTheme.textPrimary),
-                      keyboardType: TextInputType.number,
-                      decoration: InputDecoration(
-                        labelText: "Gold Deposit (optional)",
-                        labelStyle: GoogleFonts.poppins(color: AppTheme.textSecondary),
-                        filled: true,
-                        fillColor: AppTheme.background,
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(12),
-                          borderSide: BorderSide.none,
-                        ),
-                        prefixIcon: Container(
-                          padding: const EdgeInsets.all(6),
-                          decoration: BoxDecoration(
-                            gradient: AppTheme.yellowGradient,
-                            shape: BoxShape.circle,
+                    // Task Creation Fee Info
+                    AppTheme.questContainer(
+                      padding: const EdgeInsets.all(12),
+                      withYellowBorder: true,
+                      child: Row(
+                        children: [
+                          Container(
+                            padding: const EdgeInsets.all(6),
+                            decoration: BoxDecoration(
+                              gradient: AppTheme.yellowGradient,
+                              shape: BoxShape.circle,
+                            ),
+                            child: const Icon(
+                              Icons.info_outline,
+                              color: AppTheme.textPrimary,
+                              size: 18,
+                            ),
                           ),
-                          child: const Icon(
-                            Icons.monetization_on,
-                            color: AppTheme.textPrimary,
-                            size: 18,
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  "Quest Creation Fee: 50 Gold",
+                                  style: GoogleFonts.poppins(
+                                    fontSize: 13,
+                                    fontWeight: FontWeight.w700,
+                                    color: AppTheme.textPrimary,
+                                  ),
+                                ),
+                                Text(
+                                  "Completing rewards 80 gold",
+                                  style: GoogleFonts.poppins(
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.w500,
+                                    color: AppTheme.textSecondary,
+                                  ),
+                                ),
+                              ],
+                            ),
                           ),
-                        ),
+                        ],
                       ),
                     ),
                     const SizedBox(height: 16),
@@ -771,7 +785,7 @@ class _AddTaskDialogContentState extends State<_AddTaskDialogContent> {
                       backgroundColor: Colors.transparent,
                       shadowColor: Colors.transparent,
                     ),
-                    onPressed: () {
+                    onPressed: () async {
                       if (widget.titleController.text.trim().isEmpty) {
                         ScaffoldMessenger.of(context).showSnackBar(
                           SnackBar(
@@ -782,9 +796,16 @@ class _AddTaskDialogContentState extends State<_AddTaskDialogContent> {
                         return;
                       }
 
-                      int deposit = 0;
-                      if (widget.depositController.text.trim().isNotEmpty) {
-                        deposit = int.tryParse(widget.depositController.text.trim()) ?? 0;
+                      // Check if user has enough gold
+                      if (widget.gameState.gold < 50) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            content: Text("Insufficient gold! You need 50 gold to create a quest. You currently have ${widget.gameState.gold} gold."),
+                            backgroundColor: AppTheme.danger,
+                            duration: const Duration(seconds: 4),
+                          ),
+                        );
+                        return;
                       }
 
                       final deadline = DateTime(
@@ -795,19 +816,30 @@ class _AddTaskDialogContentState extends State<_AddTaskDialogContent> {
                         selectedTime.minute,
                       );
 
-                      widget.gameState.addTask(
+                      final error = await widget.gameState.addTask(
                         widget.titleController.text.trim(),
                         deadline,
-                        depositAmount: deposit,
                       );
 
-                      Navigator.pop(context);
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(
-                          content: Text("✅ Quest created!"),
-                          backgroundColor: AppTheme.success,
-                        ),
-                      );
+                      if (context.mounted) {
+                        if (error != null) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                              content: Text(error),
+                              backgroundColor: AppTheme.danger,
+                              duration: const Duration(seconds: 4),
+                            ),
+                          );
+                        } else {
+                          Navigator.pop(context);
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                              content: Text("✅ Quest created! 50 gold deducted."),
+                              backgroundColor: AppTheme.success,
+                            ),
+                          );
+                        }
+                      }
                     },
                     child: AppTheme.outlinedText(
                       text: "CREATE QUEST",

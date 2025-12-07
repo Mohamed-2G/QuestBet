@@ -1,5 +1,5 @@
-name: pay_to_do_list
-description: A gamified productivity app.
+name: questbet
+description: QuestBet - A gamified productivity app that turns your goals into quests.
 publish_to: 'none'
 version: 1.0.0+1
 
@@ -18,6 +18,8 @@ dependencies:
   google_fonts: ^6.1.0
   image_picker: ^1.0.7
   file_picker: ^8.0.0
+  firebase_storage: ^12.3.4
+  http: ^1.1.0
 
 dev_dependencies:
   flutter_test:
@@ -26,3 +28,6 @@ dev_dependencies:
 
 flutter:
   uses-material-design: true
+  assets:
+    - assets/achievements/
+    - assets/avatars/

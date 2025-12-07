@@ -6,6 +6,7 @@ class Task {
   final int depositAmount;
   String? proofLink; // Link to proof (e.g., Google Drive, URL)
   String? proofImageUrl; // URL to uploaded image
+  DateTime? completedAt; // Timestamp when task was completed
 
   Task({
     this.id,
@@ -15,6 +16,7 @@ class Task {
     this.depositAmount = 50,
     this.proofLink,
     this.proofImageUrl,
+    this.completedAt,
   });
 
   // Convert a Task into a Map (for inserting into SQL)
@@ -27,6 +29,7 @@ class Task {
       'depositAmount': depositAmount,
       'proofLink': proofLink,
       'proofImageUrl': proofImageUrl,
+      'completedAt': completedAt?.toIso8601String(),
     };
   }
 
@@ -36,10 +39,11 @@ class Task {
       id: map['id'],
       title: map['title'],
       deadline: DateTime.parse(map['deadline']), // Convert String back to Date
-      isCompleted: map['isCompleted'] == 1,      // Convert Int back to Bool
-      depositAmount: map['depositAmount'],
+      isCompleted: map['isCompleted'] == 1 || map['isCompleted'] == true,      // Convert Int/Bool back to Bool
+      depositAmount: map['depositAmount'] ?? 50,
       proofLink: map['proofLink'],
       proofImageUrl: map['proofImageUrl'],
+      completedAt: map['completedAt'] != null ? DateTime.parse(map['completedAt']) : null,
     );
   }
 }

@@ -1,8 +1,14 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 import 'package:provider/provider.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:image_picker/image_picker.dart';
+import 'dart:io';
 import 'game_state.dart';
+import 'task_model.dart';
 import 'theme.dart';
+import 'history_screen.dart';
+import 'avatars_screen.dart';
 
 class ProfileScreen extends StatelessWidget {
   const ProfileScreen({super.key});
@@ -10,6 +16,8 @@ class ProfileScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final gameState = context.watch<GameState>();
+    final int completedCount = gameState.tasks.where((Task t) => t.isCompleted).length;
+    final String? frameAsset = _achievementFrameAsset(completedCount);
 
     return Scaffold(
       backgroundColor: AppTheme.background,
@@ -28,37 +36,49 @@ class ProfileScreen extends StatelessWidget {
                 padding: const EdgeInsets.all(24),
                 child: Column(
                   children: [
-                    gameState.photoUrl != null && gameState.photoUrl!.isNotEmpty
-                        ? ClipOval(
-                            child: Image.network(
+                    SizedBox(
+                      width: 116,
+                      height: 116,
+                      child: Stack(
+                        alignment: Alignment.center,
+                        children: [
+                          // Base avatar (photo or initials)
+                          ClipOval(
+                            child: SizedBox(
+                              width: 70,
+                              height: 70,
+                              child: (gameState.photoUrl != null && gameState.photoUrl!.isNotEmpty)
+                                  ? Image.network(
                               gameState.photoUrl!,
-                              width: 80,
-                              height: 80,
                               fit: BoxFit.cover,
-                              errorBuilder: (context, error, stackTrace) => CircleAvatar(
-                                radius: 40,
-                                backgroundColor: AppTheme.primaryYellow.withOpacity(0.2),
-                                child: Text(
-                                  (gameState.username ?? 'U')[0].toUpperCase(),
-                                  style: GoogleFonts.inter(
-                                    fontSize: 32,
-                                    fontWeight: FontWeight.bold,
-                                    color: AppTheme.primaryYellow,
-                                  ),
-                                ),
+                                      errorBuilder: (context, error, stackTrace) => _initialsAvatar(gameState),
+                                    )
+                                  : _initialsAvatar(gameState),
+                            ),
+                          ),
+                          // Equipped avatar overlay (ring)
+                          if (gameState.avatarAsset != null && gameState.avatarAsset!.isNotEmpty)
+                            IgnorePointer(
+                              child: Image.asset(
+                                gameState.avatarAsset!,
+                                width: 112,
+                                height: 112,
+                                fit: BoxFit.contain,
+                                errorBuilder: (context, error, stack) => const SizedBox.shrink(),
                               ),
                             ),
-                          )
-                        : CircleAvatar(
-                            radius: 40,
-                            backgroundColor: AppTheme.primaryYellow.withOpacity(0.2),
-                            child: Text(
-                              (gameState.username ?? 'U')[0].toUpperCase(),
-                              style: GoogleFonts.inter(
-                                fontSize: 32,
-                                fontWeight: FontWeight.bold,
-                                color: AppTheme.primaryYellow,
+                          // Achievement frame overlay
+                          if (frameAsset != null)
+                            IgnorePointer(
+                              child: Image.asset(
+                                frameAsset,
+                                width: 114,
+                                height: 114,
+                                fit: BoxFit.contain,
+                                errorBuilder: (context, error, stack) => const SizedBox.shrink(),
                               ),
+                            ),
+                        ],
                             ),
                           ),
                     const SizedBox(height: 16),
@@ -78,6 +98,76 @@ class ProfileScreen extends StatelessWidget {
                         color: AppTheme.textSecondary,
                       ),
                     ),
+                    const SizedBox(height: 16),
+                    // Completed Tasks Chip
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                      decoration: BoxDecoration(
+                        color: AppTheme.primaryYellow.withOpacity(0.1),
+                        borderRadius: BorderRadius.circular(20),
+                        border: Border.all(color: AppTheme.primaryYellow.withOpacity(0.3)),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const Icon(Icons.verified, color: AppTheme.primaryYellow, size: 18),
+                          const SizedBox(width: 8),
+                          Text(
+                            '$completedCount completed',
+                            style: GoogleFonts.inter(
+                              color: AppTheme.primaryYellow,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    if (kDebugMode) ...[
+                      const SizedBox(height: 8),
+                      TextButton.icon(
+                        onPressed: () async {
+                          final controller = TextEditingController(text: completedCount.toString());
+                          final value = await showDialog<int?>(
+                            context: context,
+                            builder: (ctx) => AlertDialog(
+                              backgroundColor: AppTheme.surface,
+                              title: Text('Simulate completed tasks', style: GoogleFonts.inter(color: AppTheme.textPrimary)),
+                              content: TextField(
+                                controller: controller,
+                                keyboardType: TextInputType.number,
+                                style: GoogleFonts.inter(color: AppTheme.textPrimary),
+                                decoration: InputDecoration(
+                                  hintText: 'Enter number',
+                                  hintStyle: GoogleFonts.inter(color: AppTheme.textSecondary),
+                                  filled: true,
+                                  fillColor: AppTheme.background,
+                                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
+                                ),
+                              ),
+                              actions: [
+                                TextButton(
+                                  onPressed: () => Navigator.pop(ctx, null),
+                                  child: Text('Cancel', style: GoogleFonts.inter(color: AppTheme.textSecondary)),
+                                ),
+                                ElevatedButton(
+                                  onPressed: () {
+                                    final parsed = int.tryParse(controller.text.trim());
+                                    Navigator.pop(ctx, parsed);
+                                  },
+                                  style: ElevatedButton.styleFrom(backgroundColor: AppTheme.primaryYellow),
+                                  child: Text('Apply', style: GoogleFonts.inter(color: AppTheme.background)),
+                                ),
+                              ],
+                            ),
+                          );
+                          if (value != null) {
+                            context.read<GameState>().setDebugCompletedOverride(value);
+                          }
+                        },
+                        icon: const Icon(Icons.bug_report, color: AppTheme.textSecondary),
+                        label: Text('Simulate count (debug)', style: GoogleFonts.inter(color: AppTheme.textSecondary)),
+                      ),
+                    ],
                     const SizedBox(height: 16),
                     // Gold Balance
                     Container(
@@ -141,7 +231,7 @@ class ProfileScreen extends StatelessWidget {
                       style: GoogleFonts.inter(color: AppTheme.textPrimary),
                     ),
                     trailing: Text(
-                      '${gameState.tasks.where((t) => t.isCompleted).length}',
+                      '${gameState.tasks.where((Task t) => t.isCompleted).length}',
                       style: GoogleFonts.inter(
                         color: AppTheme.success,
                         fontWeight: FontWeight.bold,
@@ -156,7 +246,7 @@ class ProfileScreen extends StatelessWidget {
                       style: GoogleFonts.inter(color: AppTheme.textPrimary),
                     ),
                     trailing: Text(
-                      '${gameState.tasks.where((t) => !t.isCompleted).length}',
+                      '${gameState.tasks.where((Task t) => !t.isCompleted).length}',
                       style: GoogleFonts.inter(
                         color: AppTheme.textSecondary,
                         fontWeight: FontWeight.bold,
@@ -166,6 +256,9 @@ class ProfileScreen extends StatelessWidget {
                 ],
               ),
             ),
+
+            const SizedBox(height: 24),
+
 
             const SizedBox(height: 24),
 
@@ -188,6 +281,18 @@ class ProfileScreen extends StatelessWidget {
                   ),
                   const Divider(height: 1),
                   ListTile(
+                    leading: const Icon(Icons.workspace_premium, color: AppTheme.primaryYellow),
+                    title: Text(
+                      'Avatars',
+                      style: GoogleFonts.inter(color: AppTheme.textPrimary, fontWeight: FontWeight.w600),
+                    ),
+                    trailing: const Icon(Icons.chevron_right, color: AppTheme.textSecondary),
+                    onTap: () {
+                      Navigator.push(context, MaterialPageRoute(builder: (_) => const AvatarsScreen()));
+                    },
+                  ),
+                  const Divider(height: 1),
+                  ListTile(
                     leading: const Icon(Icons.history, color: AppTheme.textSecondary),
                     title: Text(
                       'Task History',
@@ -195,8 +300,11 @@ class ProfileScreen extends StatelessWidget {
                     ),
                     trailing: const Icon(Icons.chevron_right, color: AppTheme.textSecondary),
                     onTap: () {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(content: Text('Task history coming soon!')),
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (context) => const HistoryScreen(),
+                        ),
                       );
                     },
                   ),
@@ -501,47 +609,162 @@ class ProfileScreen extends StatelessWidget {
   }
 
   void _showEditPhotoDialog(BuildContext context, GameState gameState) {
-    final TextEditingController controller = TextEditingController(text: gameState.photoUrl ?? '');
+    final ImagePicker _imagePicker = ImagePicker();
+    File? selectedImageFile;
 
     showDialog(
       context: context,
-      builder: (context) => AlertDialog(
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (context, setState) => AlertDialog(
         backgroundColor: AppTheme.surface,
         title: Text(
           'Edit Profile Photo',
           style: GoogleFonts.inter(color: AppTheme.textPrimary),
         ),
-        content: Column(
+          content: SingleChildScrollView(
+            child: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            TextField(
-              controller: controller,
-              style: GoogleFonts.inter(color: AppTheme.textPrimary),
-              decoration: InputDecoration(
-                hintText: 'Paste photo URL (e.g., imgur, imgbb)',
-                hintStyle: GoogleFonts.inter(color: AppTheme.textSecondary),
-                filled: true,
-                fillColor: AppTheme.background,
-                border: OutlineInputBorder(
+                // Action buttons
+                Row(
+                  children: [
+                    Expanded(
+                      child: InkWell(
+                        onTap: () async {
+                          final XFile? image = await _imagePicker.pickImage(
+                            source: ImageSource.camera,
+                            imageQuality: 85,
+                          );
+                          if (image != null && context.mounted) {
+                            setState(() {
+                              selectedImageFile = File(image.path);
+                            });
+                          }
+                        },
+                        borderRadius: BorderRadius.circular(12),
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 12),
+                          decoration: BoxDecoration(
+                            color: AppTheme.primaryYellow.withOpacity(0.1),
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(
+                              color: AppTheme.primaryYellow.withOpacity(0.3),
+                              width: 1.5,
+                            ),
+                          ),
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Container(
+                                padding: const EdgeInsets.all(12),
+                                decoration: BoxDecoration(
+                                  color: AppTheme.primaryYellow.withOpacity(0.2),
+                                  shape: BoxShape.circle,
+                                ),
+                                child: const Icon(
+                                  Icons.camera_alt,
+                                  color: AppTheme.primaryYellow,
+                                  size: 28,
+                                ),
+                              ),
+                              const SizedBox(height: 8),
+                              Text(
+                                'Camera',
+                                style: GoogleFonts.inter(
+                                  color: AppTheme.primaryYellow,
+                                  fontSize: 14,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                                textAlign: TextAlign.center,
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: InkWell(
+                        onTap: () async {
+                          final XFile? image = await _imagePicker.pickImage(
+                            source: ImageSource.gallery,
+                            imageQuality: 85,
+                          );
+                          if (image != null && context.mounted) {
+                            setState(() {
+                              selectedImageFile = File(image.path);
+                            });
+                          }
+                        },
+                        borderRadius: BorderRadius.circular(12),
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 12),
+                          decoration: BoxDecoration(
+                            color: AppTheme.primaryYellow.withOpacity(0.1),
                   borderRadius: BorderRadius.circular(12),
-                  borderSide: BorderSide.none,
+                            border: Border.all(
+                              color: AppTheme.primaryYellow.withOpacity(0.3),
+                              width: 1.5,
+                            ),
+                          ),
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Container(
+                                padding: const EdgeInsets.all(12),
+                                decoration: BoxDecoration(
+                                  color: AppTheme.primaryYellow.withOpacity(0.2),
+                                  shape: BoxShape.circle,
+                                ),
+                                child: const Icon(
+                                  Icons.photo_library,
+                                  color: AppTheme.primaryYellow,
+                                  size: 28,
+                                ),
+                              ),
+                              const SizedBox(height: 8),
+                              Text(
+                                'Gallery',
+                                style: GoogleFonts.inter(
+                                  color: AppTheme.primaryYellow,
+                                  fontSize: 14,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                                textAlign: TextAlign.center,
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
-                prefixIcon: const Icon(Icons.image, color: AppTheme.primaryYellow),
-              ),
-              autofocus: true,
-            ),
-            const SizedBox(height: 12),
-            Text(
-              'Tip: Upload your photo to imgur.com or imgbb.com and paste the image URL here.',
-              style: GoogleFonts.inter(
-                fontSize: 12,
-                color: AppTheme.textSecondary,
-                fontStyle: FontStyle.italic,
-              ),
-            ),
-            if (gameState.photoUrl != null) ...[
-              const SizedBox(height: 16),
+                const SizedBox(height: 16),
+                // Preview selected image
+                if (selectedImageFile != null) ...[
+                  Container(
+                    height: 200,
+                    width: double.infinity,
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(
+                        color: AppTheme.primaryYellow,
+                        width: 2,
+                      ),
+                    ),
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(12),
+                      child: Image.file(
+                        selectedImageFile!,
+                        fit: BoxFit.cover,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                ],
+                // Current photo preview
+                if (gameState.photoUrl != null && selectedImageFile == null) ...[
               Text(
                 'Current Photo:',
                 style: GoogleFonts.inter(
@@ -567,12 +790,13 @@ class ProfileScreen extends StatelessWidget {
               ),
             ],
           ],
+            ),
         ),
         actions: [
           if (gameState.photoUrl != null)
             TextButton(
               onPressed: () async {
-                final error = await gameState.updatePhotoUrl(null);
+                  final error = await gameState.deletePhoto();
                 if (error != null && context.mounted) {
                   ScaffoldMessenger.of(context).showSnackBar(
                     SnackBar(
@@ -603,9 +827,11 @@ class ProfileScreen extends StatelessWidget {
             ),
           ),
           ElevatedButton(
-            onPressed: () async {
-              final photoUrl = controller.text.trim();
-              final error = await gameState.updatePhotoUrl(photoUrl.isEmpty ? null : photoUrl);
+              onPressed: selectedImageFile == null
+                  ? null
+                  : () async {
+                      if (selectedImageFile != null) {
+                        final error = await gameState.updatePhotoFromFile(selectedImageFile!);
               if (error != null && context.mounted) {
                 ScaffoldMessenger.of(context).showSnackBar(
                   SnackBar(
@@ -621,17 +847,54 @@ class ProfileScreen extends StatelessWidget {
                     backgroundColor: AppTheme.success,
                   ),
                 );
+                        }
               }
             },
-            style: ElevatedButton.styleFrom(backgroundColor: AppTheme.primaryYellow),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppTheme.primaryYellow,
+                disabledBackgroundColor: AppTheme.textSecondary.withOpacity(0.3),
+              ),
             child: Text(
               'Save',
               style: GoogleFonts.inter(color: AppTheme.background),
             ),
           ),
         ],
+        ),
       ),
     );
   }
+
+  // Helper: build initials avatar when no photo or when photo fails to load
+  Widget _initialsAvatar(GameState gameState) {
+    return CircleAvatar(
+      radius: 40,
+      backgroundColor: AppTheme.primaryYellow.withOpacity(0.2),
+      child: Text(
+        (gameState.username ?? 'U')[0].toUpperCase(),
+        style: GoogleFonts.inter(
+          fontSize: 32,
+          fontWeight: FontWeight.bold,
+          color: AppTheme.primaryYellow,
+        ),
+      ),
+    );
+  }
+
+  // Map completed tasks to achievement frame asset
+  String? _achievementFrameAsset(int completed) {
+    if (completed >= 1500) return 'assets/achievements/frame_1500.png';
+    if (completed >= 1200) return 'assets/achievements/frame_1200.png';
+    if (completed >= 1000) return 'assets/achievements/frame_1000.png';
+    if (completed >= 800) return 'assets/achievements/frame_800.png';
+    if (completed >= 600) return 'assets/achievements/frame_600.png';
+    if (completed >= 500) return 'assets/achievements/frame_500.png';
+    if (completed >= 400) return 'assets/achievements/frame_400.png';
+    if (completed >= 300) return 'assets/achievements/frame_300.png';
+    if (completed >= 200) return 'assets/achievements/frame_200.png';
+    if (completed >= 100) return 'assets/achievements/frame_100.png';
+    return null;
+  }
 }
+
 

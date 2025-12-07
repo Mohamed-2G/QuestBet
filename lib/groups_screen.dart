@@ -30,117 +30,209 @@ class _GroupsScreenState extends State<GroupsScreen> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             // Create Group Section
-            Card(
-              color: AppTheme.surface,
-              child: Padding(
-                padding: const EdgeInsets.all(20),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'Create New Group',
-                      style: GoogleFonts.inter(
-                        fontSize: 18,
-                        fontWeight: FontWeight.w600,
-                        color: AppTheme.textPrimary,
+            if (gameState.groupCode == null || gameState.groupCode!.isEmpty)
+              Card(
+                color: AppTheme.surface,
+                child: Padding(
+                  padding: const EdgeInsets.all(20),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Create New Group',
+                        style: GoogleFonts.inter(
+                          fontSize: 18,
+                          fontWeight: FontWeight.w600,
+                          color: AppTheme.textPrimary,
+                        ),
                       ),
-                    ),
-                    const SizedBox(height: 12),
-                    Text(
-                      'Create a new accountability group and share the code with your friends',
-                      style: GoogleFonts.inter(
-                        fontSize: 14,
-                        color: AppTheme.textSecondary,
+                      const SizedBox(height: 12),
+                      Text(
+                        'Create a new accountability group and share the code with your friends',
+                        style: GoogleFonts.inter(
+                          fontSize: 14,
+                          color: AppTheme.textSecondary,
+                        ),
                       ),
-                    ),
-                    const SizedBox(height: 16),
-                    SizedBox(
-                      width: double.infinity,
-                      child: ElevatedButton.icon(
-                        icon: const Icon(Icons.add_circle_outline),
-                        label: const Text('Create Group'),
-                        onPressed: () => _showCreateGroupDialog(context, gameState),
+                      const SizedBox(height: 16),
+                      SizedBox(
+                        width: double.infinity,
+                        child: ElevatedButton.icon(
+                          icon: const Icon(Icons.add_circle_outline),
+                          label: const Text('Create Group'),
+                          onPressed: () => _showCreateGroupDialog(context, gameState),
+                        ),
                       ),
-                    ),
-                  ],
+                    ],
+                  ),
+                ),
+              )
+            else
+              Card(
+                color: AppTheme.surface,
+                child: Padding(
+                  padding: const EdgeInsets.all(20),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Create New Group',
+                        style: GoogleFonts.inter(
+                          fontSize: 18,
+                          fontWeight: FontWeight.w600,
+                          color: AppTheme.textSecondary,
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      Text(
+                        'You are already in a group. Leave your current group to create a new one.',
+                        style: GoogleFonts.inter(
+                          fontSize: 14,
+                          color: AppTheme.textSecondary,
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+                      SizedBox(
+                        width: double.infinity,
+                        child: ElevatedButton.icon(
+                          icon: const Icon(Icons.add_circle_outline),
+                          label: const Text('Create Group'),
+                          onPressed: null,
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
               ),
-            ),
 
             const SizedBox(height: 24),
 
             // Join Group Section
-            Card(
-              color: AppTheme.surface,
-              child: Padding(
-                padding: const EdgeInsets.all(20),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'Join Existing Group',
-                      style: GoogleFonts.inter(
-                        fontSize: 18,
-                        fontWeight: FontWeight.w600,
-                        color: AppTheme.textPrimary,
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-                    Text(
-                      'Enter a group code to join your accountability partners',
-                      style: GoogleFonts.inter(
-                        fontSize: 14,
-                        color: AppTheme.textSecondary,
-                      ),
-                    ),
-                    const SizedBox(height: 16),
-                    TextField(
-                      controller: _codeController,
-                      style: GoogleFonts.inter(color: AppTheme.textPrimary),
-                      decoration: InputDecoration(
-                        hintText: 'e.g., ABC123',
-                        hintStyle: GoogleFonts.inter(color: AppTheme.textSecondary),
-                        filled: true,
-                        fillColor: AppTheme.background,
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(12),
-                          borderSide: BorderSide.none,
+            if (gameState.groupCode == null || gameState.groupCode!.isEmpty)
+              Card(
+                color: AppTheme.surface,
+                child: Padding(
+                  padding: const EdgeInsets.all(20),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Join Existing Group',
+                        style: GoogleFonts.inter(
+                          fontSize: 18,
+                          fontWeight: FontWeight.w600,
+                          color: AppTheme.textPrimary,
                         ),
-                        prefixIcon: const Icon(Icons.group, color: AppTheme.primaryYellow),
                       ),
-                    ),
-                    const SizedBox(height: 12),
-                    SizedBox(
-                      width: double.infinity,
-                      child: ElevatedButton(
-                        onPressed: () async {
-                          if (_codeController.text.trim().isNotEmpty) {
-                            final error = await gameState.joinGroup(_codeController.text.trim());
-                            if (error != null && mounted) {
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                SnackBar(
-                                  content: Text(error),
-                                  backgroundColor: AppTheme.danger,
-                                ),
-                              );
-                            } else if (mounted) {
-                              _codeController.clear();
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                const SnackBar(
-                                  content: Text('Successfully joined group!'),
-                                  backgroundColor: AppTheme.success,
-                                ),
-                              );
+                      const SizedBox(height: 12),
+                      Text(
+                        'Enter a group code to join your accountability partners',
+                        style: GoogleFonts.inter(
+                          fontSize: 14,
+                          color: AppTheme.textSecondary,
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+                      TextField(
+                        controller: _codeController,
+                        style: GoogleFonts.inter(color: AppTheme.textPrimary),
+                        decoration: InputDecoration(
+                          hintText: 'e.g., ABC123',
+                          hintStyle: GoogleFonts.inter(color: AppTheme.textSecondary),
+                          filled: true,
+                          fillColor: AppTheme.background,
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(12),
+                            borderSide: BorderSide.none,
+                          ),
+                          prefixIcon: const Icon(Icons.group, color: AppTheme.primaryYellow),
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      SizedBox(
+                        width: double.infinity,
+                        child: ElevatedButton(
+                          onPressed: () async {
+                            if (_codeController.text.trim().isNotEmpty) {
+                              final error = await gameState.joinGroup(_codeController.text.trim());
+                              if (error != null && mounted) {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  SnackBar(
+                                    content: Text(error),
+                                    backgroundColor: AppTheme.danger,
+                                  ),
+                                );
+                              } else if (mounted) {
+                                _codeController.clear();
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  const SnackBar(
+                                    content: Text('Successfully joined group!'),
+                                    backgroundColor: AppTheme.success,
+                                  ),
+                                );
+                              }
                             }
-                          }
-                        },
-                        child: const Text('Join Group'),
+                          },
+                          child: const Text('Join Group'),
+                        ),
                       ),
-                    ),
-                  ],
+                    ],
+                  ),
+                ),
+              )
+            else
+              Card(
+                color: AppTheme.surface,
+                child: Padding(
+                  padding: const EdgeInsets.all(20),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Join Existing Group',
+                        style: GoogleFonts.inter(
+                          fontSize: 18,
+                          fontWeight: FontWeight.w600,
+                          color: AppTheme.textSecondary,
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      Text(
+                        'You are already in a group. Leave your current group to join another one.',
+                        style: GoogleFonts.inter(
+                          fontSize: 14,
+                          color: AppTheme.textSecondary,
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+                      TextField(
+                        controller: _codeController,
+                        enabled: false,
+                        style: GoogleFonts.inter(color: AppTheme.textSecondary),
+                        decoration: InputDecoration(
+                          hintText: 'e.g., ABC123',
+                          hintStyle: GoogleFonts.inter(color: AppTheme.textSecondary),
+                          filled: true,
+                          fillColor: AppTheme.background.withOpacity(0.5),
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(12),
+                            borderSide: BorderSide.none,
+                          ),
+                          prefixIcon: const Icon(Icons.group, color: AppTheme.textSecondary),
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      SizedBox(
+                        width: double.infinity,
+                        child: ElevatedButton(
+                          onPressed: null,
+                          child: const Text('Join Group'),
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
               ),
-            ),
 
             const SizedBox(height: 24),
 

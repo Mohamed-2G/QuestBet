@@ -22,12 +22,12 @@ You need to update your Firestore security rules in the Firebase Console.
    - Click "Publish" to save
 
 4. **What These Rules Do:**
-   - ✅ Allow authenticated users to read any player document
-   - ✅ Allow users to create/update only their own player document
-   - ✅ Allow users to read/write only their own tasks
-   - ✅ Allow authenticated users to read any group
-   - ✅ Allow authenticated users to create groups
-   - ✅ Allow only the creator to update/delete a group
+   -Allow authenticated users to read any player document
+   -Allow users to create/update only their own player document
+   -Allow users to read/write only their own tasks
+   -Allow authenticated users to read any group
+   -Allow authenticated users to create groups
+   -Allow only the creator to update/delete a group
 
 ## Alternative: Using Firebase CLI
 

@@ -305,7 +305,7 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> with SingleTicker
         final isMe = player['username'] == currentUserId;
         final rank = index + 1;
 
-        return Container(
+          return Container(
           margin: const EdgeInsets.only(bottom: 12),
           decoration: BoxDecoration(
             color: AppTheme.surface,
@@ -316,17 +316,12 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> with SingleTicker
             ),
             child: ListTile(
             contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-              leading: CircleAvatar(
-              backgroundColor: isMe 
-                  ? AppTheme.primaryYellow.withOpacity(0.2)
-                  : AppTheme.textSecondary.withOpacity(0.2),
-              child: Text(
-                "#$rank",
-                style: GoogleFonts.inter(
-                  color: isMe ? AppTheme.primaryYellow : AppTheme.textSecondary,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
+              leading: _buildLeaderboardAvatar(
+                photoUrl: player['photoUrl'] as String?,
+                avatarAsset: player['avatarAsset'] as String?,
+                username: player['username'] as String? ?? 'U',
+                rank: rank,
+                highlight: isMe,
               ),
               title: Text(
               player['username'] ?? 'Unknown',
@@ -393,17 +388,12 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> with SingleTicker
           ),
           child: ListTile(
             contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-            leading: CircleAvatar(
-              backgroundColor: isMe 
-                  ? AppTheme.primaryYellow.withOpacity(0.2)
-                  : AppTheme.textSecondary.withOpacity(0.2),
-              child: Text(
-                "#$rank",
-                style: GoogleFonts.inter(
-                  color: isMe ? AppTheme.primaryYellow : AppTheme.textSecondary,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
+            leading: _buildLeaderboardAvatar(
+              photoUrl: player['photoUrl'] as String?,
+              avatarAsset: player['avatarAsset'] as String?,
+              username: player['username'] as String? ?? 'U',
+              rank: rank,
+              highlight: isMe,
             ),
             title: Text(
               player['username'] ?? 'Unknown',
@@ -433,6 +423,85 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> with SingleTicker
             ),
           );
         },
+    );
+  }
+
+  Widget _buildLeaderboardAvatar({
+    required String? photoUrl,
+    required String? avatarAsset,
+    required String username,
+    required int rank,
+    required bool highlight,
+  }) {
+    final double container = 46;
+    final double photoSize = 30;
+    final double ringSize = 44;
+    return SizedBox(
+      width: container,
+      height: container,
+      child: Stack(
+        alignment: Alignment.center,
+        children: [
+          ClipOval(
+            child: SizedBox(
+              width: photoSize,
+              height: photoSize,
+              child: (photoUrl != null && photoUrl.isNotEmpty)
+                  ? Image.network(
+                      photoUrl,
+                      fit: BoxFit.cover,
+                      errorBuilder: (c, e, s) => _initialsBubble(username, highlight),
+                    )
+                  : _initialsBubble(username, highlight),
+            ),
+          ),
+          if (avatarAsset != null && avatarAsset.isNotEmpty)
+            IgnorePointer(
+              child: Image.asset(
+                avatarAsset,
+                width: ringSize,
+                height: ringSize,
+                fit: BoxFit.contain,
+                errorBuilder: (c, e, s) => const SizedBox.shrink(),
+              ),
+            ),
+          Positioned(
+            bottom: 0,
+            right: 0,
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+              decoration: BoxDecoration(
+                color: highlight ? AppTheme.primaryYellow : AppTheme.surface,
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: highlight ? Colors.black.withOpacity(0.2) : AppTheme.textSecondary.withOpacity(0.2)),
+              ),
+              child: Text(
+                '#$rank',
+                style: GoogleFonts.inter(
+                  fontSize: 10,
+                  fontWeight: FontWeight.w700,
+                  color: highlight ? Colors.black : AppTheme.textSecondary,
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _initialsBubble(String username, bool highlight) {
+    final String letter = (username.isNotEmpty ? username[0] : 'U').toUpperCase();
+    return Container(
+      color: highlight ? AppTheme.primaryYellow.withOpacity(0.15) : AppTheme.textSecondary.withOpacity(0.15),
+      alignment: Alignment.center,
+      child: Text(
+        letter,
+        style: GoogleFonts.inter(
+          fontWeight: FontWeight.w700,
+          color: highlight ? AppTheme.primaryYellow : AppTheme.textSecondary,
+        ),
+      ),
     );
   }
 }
