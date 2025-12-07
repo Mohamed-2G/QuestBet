@@ -14,7 +14,7 @@ A gamified productivity app that turns your goals into quests. Complete tasks, e
 - Gold Economy: Start with 350 gold, manage your balance strategically
 - Proof System: Upload images, links, or files as proof of completion
 
-### 👥 Social Features
+###Social Features
 - Groups (Clans): Create or join groups with unique codes
 - Leaderboards: Compete globally or within your group
 - Two Leaderboard Types: 
@@ -146,7 +146,7 @@ Contributions are welcome! Please feel free to submit a Pull Request.
 ##Author
 
 Your Name
-- GitHub: [@yourusername](https://github.com/yourusername)
+- GitHub: [@Mohamed-2G](https://github.com/Mohamed-2G)
 
 ##Acknowledgments
 
